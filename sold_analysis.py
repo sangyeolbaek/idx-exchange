@@ -26,7 +26,7 @@ for col in num_cols:
     df[col] = pd.to_numeric(df[col], errors="coerce")
 
 # FILTER TO RESIDENTAL PROPERTIES
-df_residental = df[df["PropertyType"] == "Residental"]
+df_residental = df[df["PropertyType"] == "Residential"]
 print(f"Number of Residental Properties: {df_residental.shape[0]}")
 
 # CHECK NULL COUNT
