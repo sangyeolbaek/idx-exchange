@@ -1,4 +1,4 @@
 .DS_Store
-crmls_sold.py
-crmls_listed.py
+.ipynb_checkpoints/
+datasets/
 *.csv
