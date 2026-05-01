@@ -17,10 +17,6 @@ print(f"{len(listed_files)} files loaded.")
 print(f"Shape of dataframe: {df.shape}")
 df = pd.DataFrame(df) # to stop PyCharm's future weird DataFrame warnings
 
-# Drop duplicate rows and columns (CloseDate.1, Latitude.1, etc.)
-df = df.drop(list(df.filter(regex='.1$')), axis=1)
-df = df.drop_duplicates(subset="ListingKey", keep="last")
-
 # Filter to RESIDENTAL properties
 df = df[df["PropertyType"] == "Residential"]
 print(f"Residental Properties found: {df.shape[0]}")
@@ -54,11 +50,6 @@ for col in null_tbl[null_tbl["HighNull"]].index:
         df = df.drop(col, axis=1)
 print(f"New shape of LISTED: {df.shape}")
 
-# Drop rows with date inconsistencies (e.g. CloseDate < ListingContractDate)
-date_err = df.query("CloseDate < ListingContractDate | CloseDate < PurchaseContractDate")
-df = df.drop(date_err.index)
-print(f"LISTED new shape: {df.shape}")
-
 # Statistical summaries of ClosePrice, LivingArea, and DaysOnMarket
 perc = [0.1, 0.25, 0.5, 0.75, 0.9]
 print(f"Statistical summaries for ClosePrice, LivingArea, DaysOnMarket:\n"
@@ -66,6 +57,7 @@ print(f"Statistical summaries for ClosePrice, LivingArea, DaysOnMarket:\n"
 
 
 #####   WEEK 3   #####
+# Fetch mortgage data from FRED
 url = "https://fred.stlouisfed.org/graph/fredgraph.csv?id=MORTGAGE30US"
 mortgage = pd.read_csv(url, parse_dates=["observation_date"])
 mortgage.columns = ["date", "rate_30yr_fixed"]
@@ -84,7 +76,36 @@ df = df.merge(mortgage_monthly, on="year_month", how="left")
 
 # Merge and validate
 print(df["rate_30yr_fixed"].isnull().sum())
-print(df[["CloseDate", "year_month", "ClosePrice", "rate_30yr_fixed"]].head())
+print(df[["ListingContractDate", "year_month", "ListPrice", "rate_30yr_fixed"]].head())
+
+
+#####   WEEKS 4-5   #####
+# drop duplicate rows and columns
+df = df.drop(list(df.filter(regex='.1$')), axis=1)
+df = df.drop_duplicates(subset="ListingKey", keep="last")
+df = df.drop("ListingKeyNumeric", axis=1) # ListingKey is already "numeric"
+
+# Validate rows for date consistencies (e.g. ListingContractDate < PurchaseContractDate < CloseDate)
+#df["list_after_close_flag"] = df["CloseDate"] < df["ListingContractDate"]
+#df["purchase_after_close_flag"] = df["PurchaseContractDate"] < df["ListingContractDate"]
+#df["negative_time_flag"] = df["list_after_close_flag"] & df["purchase_after_close_flag"]
+
+# check for invalid data
+print(f"Properties with invalid Closing price records: {df[df["ClosePrice"] <= 0.0].shape[0]}") # 0
+print(f"Properties with invalid Living Area records: {df[df["LivingArea"] <= 0.0].shape[0]}") # 357
+print(f"Properties with invalid Days on Market records: {df[df["DaysOnMarket"] <= 0.0].shape[0]}") # 28917
+print(f"Properties with invalid Bathrooms records: {df[df["BathroomsTotalInteger"] < 0].shape[0]}") # 0
+print(f"Properties with invalid Bedrooms records: {df[df["BedroomsTotal"] < 0].shape[0]}") # 0
+
+# check for invalid numeric values
+num_cols = ["ClosePrice", "LivingArea", "DaysOnMarket", "BedroomsTotal", "BathroomsTotalInteger"]
+print("Checking for invalid numeric data values...")
+for col in num_cols:
+    if col in ["BathroomsTotalInteger", "BedroomsTotal"]:
+        print(f"Invalid values for {col}: {df[df[col] < 0].shape[0]}")
+    else:
+        print(f"Invalid values for {col}: {df[df[col] <= 0].shape[0]}")
+# ClosePrice: 1, LivingArea: 144, DaysOnMarket: 15825, BathroomsTotalInteger: 0, BedroomsTotal: 0
 
 
 #####   FINAL DATASET   #####
