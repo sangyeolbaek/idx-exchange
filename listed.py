@@ -134,11 +134,21 @@ df["coord_invalid"] = df["coord_missing"] | coord_out_of_range | coord_invalid
 
 #####   WEEK 6   #####
 # Create new features via feat. engineering
-df["PriceRatio"] = df["ClosePrice"] / df["OriginalListPrice"]
+df["PriceRatio"] = df["ClosePrice"] / df["ListPrice"]
 df["PricePerSqft"] = df["ClosePrice"] * df["LivingArea"]
 df["YearMonth"] = df["CloseDate"].dt.to_period("M")
+df["CloseOrigRatio"] = df["ClosePrice"] / df["OriginalListPrice"]
 df["ListContractDays"] = df["PurchaseContractDate"].dt.day - df["ListingContractDate"].dt.day
 df["ContractCloseDays"] = df["CloseDate"].dt.day - df["PurchaseContractDate"].dt.day
+
+key_metrics = ["PriceRatio", "PricePerSqft", "DaysOnMarket", "YearMonth",
+               "ListContractDays", "ContractCloseDays"]
+print(df[key_metrics].head().to_string())
+
+# summary for each segment
+segment = ["PropertySubType", "CountyOrParish", "ListOfficeName"]
+for seg in segment:
+    print(df.groupby(seg)[key_metrics].describe().to_string())
 
 
 #####   FINAL DATASET   #####
