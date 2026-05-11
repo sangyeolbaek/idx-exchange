@@ -23,7 +23,7 @@ print(f"Residental Properties found: {df.shape[0]}")
 
 
 #####   WEEK 2   #####
-date_cols = [col for col in df.columns if "date" in col.lower()]
+date_cols = ["CloseDate", "PurchaseContractDate", "ListingContractDate", "ContractStatusChangeDate"]
 for col in date_cols:
     df[col] = pd.to_datetime(df[col], errors="coerce")
 
@@ -81,14 +81,16 @@ print(df[["ListingContractDate", "year_month", "ListPrice", "rate_30yr_fixed"]].
 
 #####   WEEKS 4-5   #####
 # drop duplicate rows and columns
+print(f"Shape of LISTED: {df.shape}")
 df = df.drop(list(df.filter(regex='.1$')), axis=1)
 df = df.drop_duplicates(subset="ListingKey", keep="last")
 df = df.drop("ListingKeyNumeric", axis=1) # ListingKey is already "numeric"
+print(f"Deleted duplicate rows and columns. New shape: {df.shape}")
 
 # Validate rows for date consistencies (e.g. ListingContractDate < PurchaseContractDate < CloseDate)
-#df["list_after_close_flag"] = df["CloseDate"] < df["ListingContractDate"]
-#df["purchase_after_close_flag"] = df["PurchaseContractDate"] < df["ListingContractDate"]
-#df["negative_time_flag"] = df["list_after_close_flag"] & df["purchase_after_close_flag"]
+df["list_after_close_flag"] = df["CloseDate"] < df["ListingContractDate"]
+df["purchase_after_close_flag"] = df["PurchaseContractDate"] < df["ListingContractDate"]
+df["negative_time_flag"] = df["list_after_close_flag"] & df["purchase_after_close_flag"]
 
 # check for invalid data
 print(f"Properties with invalid Closing price records: {df[df["ClosePrice"] <= 0.0].shape[0]}") # 0
@@ -98,14 +100,45 @@ print(f"Properties with invalid Bathrooms records: {df[df["BathroomsTotalInteger
 print(f"Properties with invalid Bedrooms records: {df[df["BedroomsTotal"] < 0].shape[0]}") # 0
 
 # check for invalid numeric values
-num_cols = ["ClosePrice", "LivingArea", "DaysOnMarket", "BedroomsTotal", "BathroomsTotalInteger"]
+num_cols = ["ClosePrice", "OriginalListPrice", "LivingArea", "DaysOnMarket", "BedroomsTotal", "BathroomsTotalInteger"]
 print("Checking for invalid numeric data values...")
 for col in num_cols:
     if col in ["BathroomsTotalInteger", "BedroomsTotal"]:
         print(f"Invalid values for {col}: {df[df[col] < 0].shape[0]}")
     else:
         print(f"Invalid values for {col}: {df[df[col] <= 0].shape[0]}")
-# ClosePrice: 1, LivingArea: 144, DaysOnMarket: 15825, BathroomsTotalInteger: 0, BedroomsTotal: 0
+
+# drop some rows with invalid values for Week 6
+df = df[(df["ClosePrice"] > 0) & (df["LivingArea"] > 0) & df["OriginalListPrice"]]
+
+
+# check geographic data
+print(f"Checking data for invalid geographic data... ")
+coord_null = (df["Latitude"].isnull() | df["Longitude"].isnull())
+coord_zero = (df["Latitude"] == 0) | (df["Longitude"] == 0)
+coord_out_of_range = (df["Longitude"] > 0) | (df["Latitude"] < 0)
+coord_invalid = (abs(df["Longitude"]) > 180) | (abs(df["Latitude"]) > 90)
+
+geo_quality_report = pd.DataFrame({
+    "Missing": int(coord_null.sum()),
+    "Zero": int(coord_zero.sum()),
+    "OutOfRange": int(coord_out_of_range.sum()),
+    "Invalid": int(coord_invalid.sum())
+}, index=[0])
+print(f"Invalid geographic data report:\n"
+      f"{geo_quality_report.to_string()}")
+
+df["coord_missing"] = coord_null | coord_zero
+df["coord_invalid"] = df["coord_missing"] | coord_out_of_range | coord_invalid
+
+
+#####   WEEK 6   #####
+# Create new features via feat. engineering
+df["PriceRatio"] = df["ClosePrice"] / df["OriginalListPrice"]
+df["PricePerSqft"] = df["ClosePrice"] * df["LivingArea"]
+df["YearMonth"] = df["CloseDate"].dt.to_period("M")
+df["ListContractDays"] = df["PurchaseContractDate"].dt.day - df["ListingContractDate"].dt.day
+df["ContractCloseDays"] = df["CloseDate"].dt.day - df["PurchaseContractDate"].dt.day
 
 
 #####   FINAL DATASET   #####
