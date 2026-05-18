@@ -1,5 +1,6 @@
 import pandas as pd
 import glob as gl
+import numpy as np
 
 #####   WEEK 1   #####
 sold_files = sorted(gl.glob("datasets/CRMLSSold*.csv"))
@@ -136,20 +137,63 @@ df["coord_invalid"] = df["coord_missing"] | coord_out_of_range | coord_invalid
 #####   WEEK 6   #####
 # Create new features via feature engineering
 df["PriceRatio"] = df["ClosePrice"] / df["ListPrice"]
-df["PricePerSqft"] = df["ClosePrice"] * df["LivingArea"]
-df["YearMonth"] = df["CloseDate"].dt.to_period("M")
+df["PricePerSqft"] = df["ClosePrice"] / df["LivingArea"]
+df["CloseYrMo"] = df["CloseDate"].dt.to_period("M")
 df["CloseOrigRatio"] = df["ClosePrice"] / df["OriginalListPrice"]
 df["ListContractDays"] = df["PurchaseContractDate"].dt.day - df["ListingContractDate"].dt.day
 df["ContractCloseDays"] = df["CloseDate"].dt.day - df["PurchaseContractDate"].dt.day
 
-key_metrics = ["PriceRatio", "PricePerSqft", "DaysOnMarket", "YearMonth",
+key_metrics = ["ClosePrice", "ListPrice", "OriginalListPrice", "LivingArea",
+               "PriceRatio", "PricePerSqft", "DaysOnMarket", "CloseYrMo",
                "ListContractDays", "ContractCloseDays"]
 print(df[key_metrics].head().to_string())
 
 # summary for each segment
-segment = ["PropertySubType", "CountyOrParish", "ListOfficeName"]
-for seg in segment:
-    print(df.groupby(seg)[key_metrics].describe().to_string())
+# segment = ["PropertySubType", "CountyOrParish", "ListOfficeName"]
+# for seg in segment:
+#     print(df.groupby(seg)[key_metrics].describe().to_string())
+
+
+#####   WEEK 7   #####
+# address clerical errors for Close and List prices
+df["PriceRatioLog"] = pd.Series(round(np.log10(df["PriceRatio"])))
+
+# based on statistical analysis, prices typically ballpark upper 6-figures to lower 7-figures, so use
+# 250K to 1M as safety range
+df["ListPrice_outlier_flag"] = ((df["ListPrice"] < 250000) | (df["ListPrice"] > 1000000))
+df["ClosePrice_outlier_flag"] = ((df["ClosePrice"] < 250000) | (df["ClosePrice"] > 1000000))
+
+# try to fix close and listing prices
+df["ClosePrice_fixed"] = df["ClosePrice"]
+close_outlier = df.loc[df["ClosePrice_outlier_flag"] == True]
+close_outlier["ClosePrice_fixed"] = close_outlier["ClosePrice"] / np.power(10, close_outlier["PriceRatioLog"])
+df.loc[df["ClosePrice_outlier_flag"], "ClosePrice_fixed"] = close_outlier["ClosePrice_fixed"]
+
+df["PriceRatioLog"] = round(np.log10(df["ClosePrice_fixed"] / df["ListPrice"])) # update
+df["ListPrice_fixed"] = df["ListPrice"]
+list_outlier = df.loc[df["ListPrice_outlier_flag"] == True]
+list_outlier["ListPrice_fixed"] = list_outlier["ListPrice"] * np.power(10, list_outlier["PriceRatioLog"])
+df.loc[df["ListPrice_outlier_flag"], "ListPrice_fixed"] = list_outlier["ListPrice_fixed"]
+
+df["ClosePrice"] = df["ClosePrice_fixed"]
+df["ListPrice"] = df["ListPrice_fixed"]
+df["PriceRatio"] = df["ClosePrice"] / df["ListPrice"]
+
+df = df.drop(["PriceRatioLog", "ClosePrice_fixed", "ListPrice_fixed",\
+              "ListPrice_outlier_flag", "ClosePrice_outlier_flag"], axis=1)
+print(f"New shape: {df.shape}")
+
+# address Living Area data
+df["PricePerSqft"] = df["ClosePrice"] / df["LivingArea"]
+print(df["PricePerSqft"].describe(percentiles=[0.005, 0.1, 0.25, 0.5, 0.75, 0.9, 0.995]).to_string())
+
+# drop rows with outlier values for LivingArea, PricePerSqft, DaysOnMarket
+# analysis done on a separate Jupyter notebook
+df = df[df["DaysOnMarket"].between(1, 500)]
+df = df[(df["LivingArea"] >= 100) & (df["LivingArea"] < 10000)]
+df = df[(df["PricePerSqft"] < 10000)]
+print("Filtered extreme outliers for LivingArea, PricePerSqft, DaysOnMarket")
+print(f"New shape: {df.shape}")
 
 
 #####   FINAL DATASET   #####
